@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Empréstimo - UNESP</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="container">
+    <div class="card">
+      <h1>Sistema de Empréstimo</h1>
+      <p>Laboratórios da UNESP</p>
+
+      <div class="buttons">
+        <button class="btn" id="openModal">Login do Administrador</button>
+        <button class="btn" id="openLoanModal">Solicitar Empréstimo</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- Modal de Login do Administrador -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Acesso Administrador</h2>
+        <button class="close-btn" id="closeModal">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <form id="adminLoginForm">
+          <label for="usuario">Usuário</label>
+          <input type="text" id="usuario" placeholder="ex: admin_unesp">
+
+          <label for="senha">Senha</label>
+          <input type="password" id="senha" placeholder="Digite sua senha">
+
+          <div id="adminFeedback" class="feedback-message" style="display: none;"></div>
+          
+          <button type="submit" class="modal-login-btn">Entrar</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Solicitar Empréstimo -->
+  <div class="modal-overlay" id="loanModalOverlay">
+    <div class="modal modal-loan">
+      <div class="modal-header">
+        <h2>Solicitar Empréstimo</h2>
+        <button class="close-btn" id="closeLoanModal">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <form id="loanRequestForm">
+          <div class="form-group">
+            <label for="requesterName">Nome completo *</label>
+            <input type="text" id="requesterName" placeholder="Ex: Maria Fernanda Souza" required>
+          </div>
+
+          <div class="form-group">
+            <label for="requesterEmail">E-mail institucional</label>
+            <input type="email" id="requesterEmail" placeholder="maria.souza@unesp.br">
+          </div>
+
+          <div class="form-group">
+            <label for="itemSearch">Nome do Item *</label>
+            <input type="text" id="itemSearch" placeholder="Digite o nome do item..." autocomplete="off">
+            <div id="itemSuggestions" class="suggestions-list"></div>
+          </div>
+
+          <div class="form-group">
+            <label for="itemPatrimonio">Nº de Patrimônio *</label>
+            <input type="text" id="itemPatrimonio" placeholder="Digite o número de patrimônio..." autocomplete="off">
+            <div id="patrimonioSuggestions" class="suggestions-list"></div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="loanDate">Data prevista para retirada *</label>
+              <input type="date" id="loanDate" required>
+            </div>
+
+            <div class="form-group">
+              <label for="returnDate">Data prevista para devolução *</label>
+              <input type="date" id="returnDate" required>
+            </div>
+          </div>
+
+          <div id="selectedItemInfo" class="selected-item-info" style="display: none;">
+            <strong>Item selecionado:</strong>
+            <span id="selectedItemName"></span>
+            <br>
+            <strong>Patrimônio:</strong>
+            <span id="selectedItemPatrimonio"></span>
+          </div>
+
+          <div id="loanFeedback" class="feedback-message" style="display: none;"></div>
+          
+          <button type="submit" class="modal-login-btn" id="submitLoanBtn" disabled>Enviar solicitação</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

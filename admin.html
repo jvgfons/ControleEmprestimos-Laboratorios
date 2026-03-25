@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - Sistema de Empréstimo UNESP</title>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <div class="admin-container">
+    <header class="admin-header">
+      <div class="header-content">
+        <div class="logo-area">
+          <h1><i class="icon">📋</i> Painel Administrativo</h1>
+          <p>Sistema de Empréstimo - Laboratórios UNESP</p>
+        </div>
+        <div class="header-actions">
+          <div class="user-info">
+            <div class="user-name" id="userName">Carregando...</div>
+            <div class="user-role">Administrador</div>
+          </div>
+          <button class="logout-btn" id="logoutBtn">
+            <i class="icon">🚪</i> Sair
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="cadastrar-item">
+        <i class="icon">➕</i> Cadastrar Item
+      </button>
+      <button class="tab-btn" data-tab="cadastrar-emprestimo">
+        <i class="icon">📝</i> Cadastrar Empréstimo
+      </button>
+      <button class="tab-btn" data-tab="emprestimos-ativos">
+        <i class="icon">🔄</i> Empréstimos Ativos
+      </button>
+      <button class="tab-btn" data-tab="historico">
+        <i class="icon">📊</i> Histórico
+      </button>
+      <button class="tab-btn" data-tab="solicitacoes">
+        <i class="icon">📬</i> Solicitações Pendentes
+      </button>
+      <button class="tab-btn" data-tab="gerenciar-itens">
+        <i class="icon">⚙️</i> Gerenciar Itens
+      </button>
+    </div>
+
+    <div class="tab-content">
+      <!-- Tab: Cadastrar Item -->
+      <div class="tab-pane active" id="cadastrar-item">
+        <div class="card">
+          <h2><i class="icon">➕</i> Cadastrar Novo Item</h2>
+          <form id="cadastrarItemForm">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Marca *</label>
+                <input type="text" id="itemMarca" placeholder="Ex: Dell, Tektronix, HP" autocomplete="off" required>
+                <div id="marcaSuggestions" class="suggestions-list"></div>
+              </div>
+              <div class="form-group">
+                <label>Modelo *</label>
+                <input type="text" id="itemModelo" placeholder="Ex: Latitude 5420, TDS2024" autocomplete="off" required>
+                <div id="modeloSuggestions" class="suggestions-list"></div>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Número de Patrimônio *</label>
+                <input type="text" id="itemPatrimonio" placeholder="Ex: UNESP-2024-001" required>
+              </div>
+              <div class="form-group">
+                <label>Número de Série</label>
+                <input type="text" id="itemSerial" placeholder="Opcional">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Tipo *</label>
+                <select id="itemTipo" required>
+                  <option value="">Selecione...</option>
+                  <option value="Equipamento">Equipamento</option>
+                  <option value="Consumível">Consumível</option>
+                  <option value="Informática">Informática</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Quantidade Disponível *</label>
+                <input type="number" id="itemQuantidade" value="1" min="1" required>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Descrição</label>
+              <textarea id="itemDescricao" rows="3" placeholder="Descrição detalhada do item..."></textarea>
+            </div>
+            <div class="form-group">
+              <label>Localização</label>
+              <input type="text" id="itemLocalizacao" placeholder="Ex: Lab 101, Prédio Central">
+            </div>
+            <button type="submit" class="btn-primary">Cadastrar Item</button>
+          </form>
+          <div id="cadastroItemFeedback" class="feedback-message" style="display: none;"></div>
+        </div>
+      </div>
+
+      <!-- Tab: Cadastrar Empréstimo -->
+      <div class="tab-pane" id="cadastrar-emprestimo">
+        <div class="card">
+          <h2><i class="icon">📝</i> Cadastrar Novo Empréstimo</h2>
+          <form id="cadastrarEmprestimoForm">
+            <div class="form-group">
+              <label>Buscar Item *</label>
+              <input type="text" id="buscarItemEmprestimo" placeholder="Digite marca, modelo ou patrimônio..." autocomplete="off">
+              <div id="itemEmprestimoSuggestions" class="suggestions-list"></div>
+            </div>
+            <div id="selectedItemDisplay" class="selected-item-info" style="display: none;">
+              <strong>Item selecionado:</strong>
+              <div id="selectedItemDetails"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Nome do Solicitante *</label>
+                <input type="text" id="emprestimoSolicitante" placeholder="Nome completo" required>
+              </div>
+              <div class="form-group">
+                <label>E-mail</label>
+                <input type="email" id="emprestimoEmail" placeholder="email@unesp.br">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Data de Retirada *</label>
+                <input type="date" id="emprestimoDataRetirada" required>
+              </div>
+              <div class="form-group">
+                <label>Data de Devolução Prevista *</label>
+                <input type="date" id="emprestimoDataDevolucao" required>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Observações</label>
+              <textarea id="emprestimoObservacoes" rows="2" placeholder="Observações adicionais..."></textarea>
+            </div>
+            <button type="submit" class="btn-primary" id="submitEmprestimoBtn" disabled>Registrar Empréstimo</button>
+          </form>
+          <div id="cadastroEmprestimoFeedback" class="feedback-message" style="display: none;"></div>
+        </div>
+      </div>
+
+      <!-- Tab: Empréstimos Ativos -->
+      <div class="tab-pane" id="emprestimos-ativos">
+        <div class="card">
+          <h2><i class="icon">🔄</i> Empréstimos Ativos</h2>
+          <div class="filters">
+            <input type="text" id="searchAtivos" placeholder="Buscar por solicitante ou item..." class="search-input">
+          </div>
+          <div class="table-container">
+            <table class="data-table" id="ativosTable">
+              <thead>
+                <tr><th>ID</th><th>Item</th><th>Patrimônio</th><th>Solicitante</th><th>Retirada</th><th>Devolução</th><th>Ações</th> </thead>
+              <tbody id="ativosTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Histórico -->
+      <div class="tab-pane" id="historico">
+        <div class="card">
+          <h2><i class="icon">📊</i> Histórico de Empréstimos</h2>
+          <div class="filters">
+            <input type="text" id="searchHistorico" placeholder="Buscar por solicitante ou item..." class="search-input">
+          </div>
+          <div class="table-container">
+            <table class="data-table" id="historicoTable">
+              <thead> <tr><th>ID</th><th>Item</th><th>Solicitante</th><th>Retirada</th><th>Devolução</th><th>Status</th><th>Devolvido em</th></tr> </thead>
+              <tbody id="historicoTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Solicitações Pendentes -->
+      <div class="tab-pane" id="solicitacoes">
+        <div class="card">
+          <h2><i class="icon">📬</i> Solicitações Pendentes</h2>
+          <div class="table-container">
+            <table class="data-table" id="solicitacoesTable">
+              <thead> <tr><th>Protocolo</th><th>Solicitante</th><th>Item</th><th>Patrimônio</th><th>Retirada</th><th>Devolução</th><th>Ações</th></tr> </thead>
+              <tbody id="solicitacoesTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Gerenciar Itens -->
+      <div class="tab-pane" id="gerenciar-itens">
+        <div class="card">
+          <h2><i class="icon">⚙️</i> Gerenciar Itens</h2>
+          <div class="filters">
+            <input type="text" id="searchGerenciar" placeholder="Buscar por marca, modelo ou patrimônio..." class="search-input">
+          </div>
+          <div class="table-container">
+            <table class="data-table" id="gerenciarItemsTable">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Marca</th>
+                  <th>Modelo</th>
+                  <th>Patrimônio</th>
+                  <th>Nº Série</th>
+                  <th>Quantidade</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="gerenciarItemsTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+        
+        <div class="card">
+          <h3><i class="icon">🏷️</i> Marcas Cadastradas</h3>
+          <div class="tags-list" id="marcasList"></div>
+        </div>
+        
+        <div class="card">
+          <h3><i class="icon">📱</i> Modelos Cadastrados</h3>
+          <div class="tags-list" id="modelosList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>

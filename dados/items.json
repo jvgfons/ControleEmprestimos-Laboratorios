@@ -1,0 +1,35 @@
+[
+  {
+    "id": 1,
+    "marca": "Tektronix",
+    "modelo": "TDS2024C",
+    "patrimonio": "UNESP-2024-001",
+    "serial": "TEK-2024-001",
+    "tipo": "Equipamento",
+    "quantidade": 3,
+    "descricao": "Osciloscópio digital de 200MHz",
+    "localizacao": "Lab 101"
+  },
+  {
+    "id": 2,
+    "marca": "Dell",
+    "modelo": "Latitude 5420",
+    "patrimonio": "UNESP-2024-002",
+    "serial": "DL-5420-001",
+    "tipo": "Informática",
+    "quantidade": 5,
+    "descricao": "Notebook Intel i5, 8GB RAM",
+    "localizacao": "Lab 102"
+  },
+  {
+    "id": 3,
+    "marca": "Arduino",
+    "modelo": "Uno R3",
+    "patrimonio": "UNESP-2024-003",
+    "serial": "ARD-UNO-001",
+    "tipo": "Equipamento",
+    "quantidade": 10,
+    "descricao": "Kit completo com sensores",
+    "localizacao": "Lab 103"
+  }
+]

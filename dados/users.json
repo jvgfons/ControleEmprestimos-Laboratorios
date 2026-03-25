@@ -1,0 +1,9 @@
+[
+  {
+    "id": 1,
+    "username": "admin",
+    "password": "unesp2025",
+    "nome": "Administrador",
+    "role": "admin"
+  }
+]
