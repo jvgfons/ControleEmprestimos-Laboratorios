@@ -2,8 +2,15 @@
   {
     "id": 1,
     "username": "admin",
-    "password": "unesp2025",
+    "email": "",
+    "password": "unesp2026",
     "nome": "Administrador",
-    "role": "admin"
-  }
+    "role": "master",
+    "localizacao": "",
+    "localizacoes": [],
+    "status": "active",
+    "mustResetPassword": false,
+    "createdAt": null,
+    "updatedAt": null
+  }  
 ]

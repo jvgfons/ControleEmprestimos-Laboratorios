@@ -3,6 +3,7 @@ const API_URL = 'http://localhost:3000/api';
 const modalOverlay = document.getElementById('modalOverlay');
 const openModalBtn = document.getElementById('openModal');
 const openTrackModalBtn = document.getElementById('openTrackModal');
+const openNewAdminBtn = document.getElementById('openNewAdminBtn');
 const closeModalBtn = document.getElementById('closeModal');
 const adminForm = document.getElementById('adminLoginForm');
 
@@ -10,6 +11,7 @@ const loanModalOverlay = document.getElementById('loanModalOverlay');
 const openLoanModalBtn = document.getElementById('openLoanModal');
 const closeLoanModalBtn = document.getElementById('closeLoanModal');
 const loanForm = document.getElementById('loanRequestForm');
+const requestLocationSelect = document.getElementById('requestLocation');
 const requestItemsContainer = document.getElementById('requestItemsContainer');
 const addRequestItemBtn = document.getElementById('addRequestItemBtn');
 
@@ -23,6 +25,9 @@ const loanDate = document.getElementById('loanDate');
 const returnDate = document.getElementById('returnDate');
 
 let items = [];
+let metadataOptions = {
+  localizacao: [],
+};
 let requestLines = [];
 let lineSequence = 0;
 let siteModalResolver = null;
@@ -39,7 +44,9 @@ function escapeHtml(value) {
 async function parseJsonResponse(response) {
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data.error || data.message || 'Erro na requisição');
+    const error = new Error(data.error || data.message || 'Erro na requisição');
+    error.details = data;
+    throw error;
   }
   return data;
 }
@@ -59,6 +66,12 @@ async function createSolicitacao(payload) {
   return parseJsonResponse(response);
 }
 
+async function fetchMetadata() {
+  const response = await fetch(`${API_URL}/metadata`);
+  metadataOptions = await parseJsonResponse(response);
+  return metadataOptions;
+}
+
 async function fetchSolicitacoesByEmail(email) {
   const response = await fetch(`${API_URL}/solicitacoes/email/${encodeURIComponent(email)}`);
   return parseJsonResponse(response);
@@ -69,6 +82,29 @@ async function loginAdmin(username, password) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
+  });
+  return parseJsonResponse(response);
+}
+
+async function fetchAdminEligibility(email) {
+  const response = await fetch(`${API_URL}/admin-users/eligibility/${encodeURIComponent(email)}`);
+  return parseJsonResponse(response);
+}
+
+async function activateAdminAccount(payload) {
+  const response = await fetch(`${API_URL}/admin-users/activate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonResponse(response);
+}
+
+async function resetAdminPassword(payload) {
+  const response = await fetch(`${API_URL}/admin-users/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
   });
   return parseJsonResponse(response);
 }
@@ -226,8 +262,241 @@ function openTrackModal() {
   });
 }
 
+function validateAdminPassword(password, confirmPassword) {
+  if (password !== confirmPassword) {
+    return 'A confirmação da senha não confere.';
+  }
+
+  if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*[^A-Za-z0-9]).{8,}$/.test(password)) {
+    return 'A senha deve ter pelo menos 8 caracteres, com letras maiúsculas, minúsculas e caractere especial.';
+  }
+
+  return '';
+}
+
+function openAdminPasswordResetModal(user) {
+  openSiteModal({
+    title: 'Redefinir senha do administrador',
+    bodyHtml: `
+      <div class="modal-form-grid">
+        <label class="modal-form-field">
+          <span>E-mail institucional</span>
+          <input type="email" id="adminResetEmail" class="readonly-field" value="${escapeHtml(user.email || '')}" readonly>
+        </label>
+        <p class="modal-text">O administrador master liberou a redefinição da sua senha. Cadastre uma nova senha para continuar.</p>
+        <label class="modal-form-field">
+          <span>Nova senha</span>
+          <input type="password" id="adminResetPassword" placeholder="Crie uma nova senha">
+        </label>
+        <label class="modal-form-field">
+          <span>Confirmar senha</span>
+          <input type="password" id="adminResetPasswordConfirm" placeholder="Repita a nova senha">
+        </label>
+        <p class="password-rule-hint">Use no mínimo 8 caracteres, com letras maiúsculas, minúsculas e caractere especial.</p>
+        <div id="adminResetFeedback"></div>
+      </div>
+    `,
+    footerHtml: `
+      <button type="button" class="modal-login-btn" id="adminResetSubmitBtn">Salvar nova senha</button>
+    `,
+    onOpen: () => {
+      const submitButton = document.getElementById('adminResetSubmitBtn');
+      const feedback = document.getElementById('adminResetFeedback');
+      const passwordInput = document.getElementById('adminResetPassword');
+      const confirmInput = document.getElementById('adminResetPasswordConfirm');
+
+      submitButton.addEventListener('click', async () => {
+        const validationMessage = validateAdminPassword(passwordInput.value, confirmInput.value);
+        if (validationMessage) {
+          feedback.innerHTML = `<div class="feedback-message error">${escapeHtml(validationMessage)}</div>`;
+          return;
+        }
+
+        submitButton.disabled = true;
+        submitButton.textContent = 'Salvando...';
+
+        try {
+          await resetAdminPassword({
+            email: user.email,
+            password: passwordInput.value,
+            confirmPassword: confirmInput.value,
+          });
+
+          closeSiteModal(true);
+          await showInfoModal({
+            title: 'Senha atualizada',
+            bodyHtml: '<p class="modal-text">Senha cadastrada com sucesso. Agora você já pode entrar no painel administrativo pelo login.</p>',
+            buttonText: 'Voltar ao login',
+          });
+          openAdminModal();
+          document.getElementById('usuario').value = user.email || '';
+          document.getElementById('senha').focus();
+        } catch (error) {
+          feedback.innerHTML = `<div class="feedback-message error">${escapeHtml(error.message || 'Erro ao atualizar a senha.')}</div>`;
+        } finally {
+          submitButton.disabled = false;
+          submitButton.textContent = 'Salvar nova senha';
+        }
+      });
+    },
+  });
+}
+
+async function openAdminActivationModal(user) {
+  openSiteModal({
+    title: 'Concluir cadastro de administrador',
+    bodyHtml: `
+      <div class="modal-form-grid">
+        <label class="modal-form-field">
+          <span>E-mail institucional</span>
+          <input type="email" id="adminActivationEmail" class="readonly-field" value="${escapeHtml(user.email || '')}" readonly>
+        </label>
+        <label class="modal-form-field">
+          <span>Nome completo</span>
+          <input type="text" id="adminActivationName" placeholder="Ex: Maria Fernanda Souza">
+        </label>
+        <div class="selected-item-info compact">
+          <strong>Localizações responsáveis</strong>
+          <div>${escapeHtml((user.localizacoes || []).join(', ') || user.localizacao || 'Nenhuma localização vinculada')}</div>
+        </div>
+        <label class="modal-form-field">
+          <span>Senha</span>
+          <input type="password" id="adminActivationPassword" placeholder="Crie uma senha">
+        </label>
+        <label class="modal-form-field">
+          <span>Confirmar senha</span>
+          <input type="password" id="adminActivationPasswordConfirm" placeholder="Repita a senha">
+        </label>
+        <p class="password-rule-hint">Use no mínimo 8 caracteres, com letras maiúsculas, minúsculas e caractere especial.</p>
+        <div id="adminActivationFeedback"></div>
+      </div>
+    `,
+    footerHtml: `
+      <button type="button" class="modal-login-btn" id="adminActivationSubmitBtn">Confirmar cadastro</button>
+    `,
+    onOpen: () => {
+      const submitButton = document.getElementById('adminActivationSubmitBtn');
+      const feedback = document.getElementById('adminActivationFeedback');
+
+      submitButton.addEventListener('click', async () => {
+        const payload = {
+          email: user.email,
+          nome: document.getElementById('adminActivationName').value.trim(),
+          password: document.getElementById('adminActivationPassword').value,
+          confirmPassword: document.getElementById('adminActivationPasswordConfirm').value,
+        };
+
+        const validationMessage = validateAdminPassword(payload.password, payload.confirmPassword);
+        if (validationMessage) {
+          feedback.innerHTML = `<div class="feedback-message error">${escapeHtml(validationMessage)}</div>`;
+          return;
+        }
+
+        if (!payload.nome) {
+          feedback.innerHTML = '<div class="feedback-message error">Preencha o nome e a senha para concluir o cadastro.</div>';
+          return;
+        }
+
+        submitButton.disabled = true;
+        submitButton.textContent = 'Confirmando...';
+
+        try {
+          await activateAdminAccount(payload);
+          closeSiteModal(true);
+          await showInfoModal({
+            title: 'Cadastro concluído',
+            bodyHtml: '<p class="modal-text">Administrador cadastrado com sucesso. Faça login com o e-mail institucional e a nova senha.</p>',
+            buttonText: 'Voltar ao login',
+          });
+          openAdminModal();
+          document.getElementById('usuario').value = user.email || '';
+          document.getElementById('senha').focus();
+        } catch (error) {
+          feedback.innerHTML = `<div class="feedback-message error">${escapeHtml(error.message || 'Erro ao concluir o cadastro.')}</div>`;
+        } finally {
+          submitButton.disabled = false;
+          submitButton.textContent = 'Confirmar cadastro';
+        }
+      });
+    },
+  });
+}
+
+function openNewAdminModal(prefilledEmail = '') {
+  openSiteModal({
+    title: 'Novo Administrador',
+    bodyHtml: `
+      <div class="modal-form-grid">
+        <p class="modal-text">Informe o e-mail institucional autorizado por um administrador master para concluir o primeiro acesso.</p>
+        <label class="modal-form-field">
+          <span>E-mail institucional</span>
+          <input type="email" id="newAdminEmailInput" placeholder="nome.sobrenome@unesp.br" value="${escapeHtml(prefilledEmail)}">
+        </label>
+        <div id="newAdminFeedback"></div>
+      </div>
+    `,
+    footerHtml: `
+      <button type="button" class="modal-login-btn" id="newAdminContinueBtn">Continuar</button>
+    `,
+    onOpen: () => {
+      const emailInput = document.getElementById('newAdminEmailInput');
+      const continueButton = document.getElementById('newAdminContinueBtn');
+      const feedback = document.getElementById('newAdminFeedback');
+
+      continueButton.addEventListener('click', async () => {
+        const email = emailInput.value.trim();
+        if (!email) {
+          feedback.innerHTML = '<div class="feedback-message error">Informe o e-mail institucional para continuar.</div>';
+          return;
+        }
+
+        continueButton.disabled = true;
+        continueButton.textContent = 'Verificando...';
+
+        try {
+          const result = await fetchAdminEligibility(email);
+          if (result.mode === 'reset') {
+            openAdminPasswordResetModal(result.user || { email });
+            return;
+          }
+          await openAdminActivationModal(result.user || { email });
+        } catch (error) {
+          feedback.innerHTML = `<div class="feedback-message error">${escapeHtml(error.message || 'Não foi possível validar o e-mail informado.')}</div>`;
+        } finally {
+          continueButton.disabled = false;
+          continueButton.textContent = 'Continuar';
+        }
+      });
+    },
+  });
+}
+
 function itemSubtitle(item) {
   return `${item.marca || 'Sem marca'} | ${item.modelo || 'Sem modelo'} | ${item.disponiveis} disponível(eis)`;
+}
+
+function populateRequestLocationOptions() {
+  if (!requestLocationSelect) {
+    return;
+  }
+
+  const currentValue = requestLocationSelect.value;
+  const locations = [...new Set((metadataOptions.localizacao || []).map((value) => String(value || '').trim()).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b, 'pt-BR')
+  );
+
+  requestLocationSelect.innerHTML = `
+    <option value="">Selecione o laboratório...</option>
+    ${locations
+      .map(
+        (location) => `<option value="${escapeHtml(location)}" ${location === currentValue ? 'selected' : ''}>${escapeHtml(location)}</option>`
+      )
+      .join('')}
+  `;
+}
+
+function getSelectedRequestLocation() {
+  return String(requestLocationSelect?.value || '').trim();
 }
 
 function createLineId() {
@@ -241,7 +510,12 @@ function getItemById(itemId) {
 
 function searchItems(query) {
   const normalized = query.trim().toLowerCase();
+  const selectedLocation = getSelectedRequestLocation();
   if (!normalized) {
+    return [];
+  }
+
+  if (!selectedLocation) {
     return [];
   }
 
@@ -250,7 +524,7 @@ function searchItems(query) {
       .filter(Boolean)
       .join(' ')
       .toLowerCase();
-    return searchable.includes(normalized) && item.disponiveis > 0;
+    return searchable.includes(normalized) && item.disponiveis > 0 && String(item.localizacao || '').trim() === selectedLocation;
   });
 }
 
@@ -288,7 +562,7 @@ function renderRequestLines() {
           <div class="item-line-header">
             <div>
               <h3>Item ${index + 1}</h3>
-              <p>Escolha o título do item e a quantidade desejada.</p>
+              <p>${getSelectedRequestLocation() ? 'Escolha o título do item e a quantidade desejada.' : 'Selecione primeiro o laboratório para buscar os itens disponíveis.'}</p>
             </div>
             <div class="item-line-tools">
               <label class="inline-field">
@@ -305,7 +579,9 @@ function renderRequestLines() {
 
           <div class="form-group">
             <label>Título do item *</label>
-            <input type="text" class="line-search-input" value="${escapeHtml(item ? item.titulo : line.query)}" placeholder="Digite o título, a marca ou o modelo..." autocomplete="off">
+            <input type="text" class="line-search-input" value="${escapeHtml(item ? item.titulo : line.query)}" placeholder="${escapeHtml(
+              getSelectedRequestLocation() ? 'Digite o título, a marca ou o modelo...' : 'Selecione o laboratório antes de pesquisar'
+            )}" autocomplete="off" ${getSelectedRequestLocation() ? '' : 'disabled'}>
             <div class="suggestions-list ${suggestions.length ? 'active' : ''}">
               ${suggestions
                 .map(
@@ -368,6 +644,7 @@ function closeAdminModal() {
 function openLoanModal() {
   loanModalOverlay.classList.add('active');
   loanForm.reset();
+  populateRequestLocationOptions();
   const today = new Date().toISOString().split('T')[0];
   loanDate.min = today;
   loanDate.value = today;
@@ -416,13 +693,14 @@ loanForm.addEventListener('submit', async (event) => {
 
   const name = document.getElementById('requesterName').value.trim();
   const email = document.getElementById('requesterEmail').value.trim();
+  const localizacao = getSelectedRequestLocation();
   const retirada = loanDate.value;
   const devolucao = returnDate.value;
 
-  if (!name || !email || !retirada || !devolucao) {
+  if (!name || !email || !localizacao || !retirada || !devolucao) {
     feedback.style.display = 'block';
     feedback.className = 'feedback-message error';
-    feedback.innerHTML = 'Preencha nome, e-mail e datas obrigatórias.';
+    feedback.innerHTML = 'Preencha nome, e-mail, laboratório e datas obrigatórias.';
     return;
   }
 
@@ -448,6 +726,7 @@ loanForm.addEventListener('submit', async (event) => {
         <div class="request-summary">
           <p><strong>Protocolo:</strong> ${escapeHtml(result.id)}</p>
           <p><strong>Solicitante:</strong> ${escapeHtml(name)}</p>
+          <p><strong>Laboratório:</strong> ${escapeHtml(localizacao)}</p>
           <p><strong>Itens:</strong></p>
           <ul class="summary-list">
             ${requestItems.map((item) => `<li>${escapeHtml(item.itemNome)} x${item.quantidade}</li>`).join('')}
@@ -503,6 +782,11 @@ requestItemsContainer.addEventListener('click', (event) => {
   }
 });
 
+requestLocationSelect.addEventListener('change', () => {
+  requestLines = [createRequestLine()];
+  renderRequestLines();
+});
+
 requestItemsContainer.addEventListener('input', (event) => {
   const line = requestLines.find((entry) => entry.id === event.target.closest('.item-line-card')?.dataset.lineId);
   if (!line || !event.target.classList.contains('line-search-input')) {
@@ -531,6 +815,10 @@ requestItemsContainer.addEventListener('change', (event) => {
 });
 
 openModalBtn.addEventListener('click', openAdminModal);
+openNewAdminBtn.addEventListener('click', () => {
+  closeAdminModal();
+  openNewAdminModal();
+});
 openTrackModalBtn.addEventListener('click', openTrackModal);
 closeModalBtn.addEventListener('click', closeAdminModal);
 openLoanModalBtn.addEventListener('click', openLoanModal);
@@ -570,7 +858,7 @@ adminForm.addEventListener('submit', async (event) => {
   if (!usuario || !senha) {
     feedback.style.display = 'block';
     feedback.className = 'feedback-message error';
-    feedback.innerHTML = 'Preencha usuário e senha.';
+    feedback.innerHTML = 'Preencha o usuário ou e-mail e a senha.';
     return;
   }
 
@@ -585,6 +873,18 @@ adminForm.addEventListener('submit', async (event) => {
       window.location.href = 'admin.html';
     }, 1000);
   } catch (error) {
+    if (error.details?.code === 'FIRST_ACCESS_REQUIRED') {
+      closeAdminModal();
+      openNewAdminModal(error.details?.user?.email || usuario);
+      return;
+    }
+
+    if (error.details?.code === 'RESET_REQUIRED' && error.details?.user?.email) {
+      closeAdminModal();
+      openAdminPasswordResetModal(error.details.user);
+      return;
+    }
+
     feedback.style.display = 'block';
     feedback.className = 'feedback-message error';
     feedback.innerHTML = escapeHtml(error.message || 'Erro ao conectar com o servidor.');
@@ -605,6 +905,7 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
+fetchMetadata().then(populateRequestLocationOptions);
 fetchItems();
 requestLines = [createRequestLine()];
 renderRequestLines();

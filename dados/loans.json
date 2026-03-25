@@ -1,1 +1,21 @@
-[]
+[
+  {
+    "id": 1,
+    "loanGroupId": "EMP-2026-0001",
+    "solicitacaoId": "SOL-2026-0001",
+    "itemId": 1,
+    "itemNome": "Prototipadora LPKF S104",
+    "localizacao": "Lab Comunicações",
+    "itemUnitId": "1-1",
+    "itemPatrimonio": "000446",
+    "itemPatrimonioReal": "000446",
+    "solicitante": "Julia",
+    "email": "julia@unesp.br",
+    "dataRetirada": "2026-03-25",
+    "dataDevolucaoPrevista": "2027-03-25",
+    "dataDevolucaoReal": null,
+    "observacoes": "Gerado por aprovacao de solicitacao",
+    "status": "ativo",
+    "dataCriacao": "2026-03-25T20:49:25.059Z"
+  }
+]

@@ -14,6 +14,7 @@ let metadataOptions = {
   modelo: [],
   localizacao: [],
 };
+let adminUsers = [];
 let adminLoanLines = [];
 let selectedActiveLoanIds = new Set();
 let lineSequence = 0;
@@ -32,8 +33,12 @@ const itemPatrimonioInput = document.getElementById('itemPatrimonio');
 const itemSerialInput = document.getElementById('itemSerial');
 const itemTipoInput = document.getElementById('itemTipo');
 const itemLocalizacaoInput = document.getElementById('itemLocalizacao');
+const emprestimoLocalizacaoInput = document.getElementById('emprestimoLocalizacao');
 const goToCadastrarItemBtn = document.getElementById('goToCadastrarItemBtn');
 const goToAdicionarLocalizacaoBtn = document.getElementById('goToAdicionarLocalizacaoBtn');
+const openCreateAdminBtn = document.getElementById('openCreateAdminBtn');
+const manageAdministradoresTab = document.getElementById('manageAdministradoresTab');
+const adminsTableBody = document.getElementById('adminsTableBody');
 
 const tituloSuggestions = document.getElementById('tituloSuggestions');
 const marcaSuggestions = document.getElementById('marcaSuggestions');
@@ -52,6 +57,7 @@ const siteModalTitle = document.getElementById('siteModalTitle');
 const siteModalBody = document.getElementById('siteModalBody');
 const siteModalFooter = document.getElementById('siteModalFooter');
 const adminBackgroundImage = document.getElementById('adminBackgroundImage');
+const userRoleLabel = document.getElementById('userRoleLabel');
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -69,6 +75,15 @@ function updateUserInfo() {
   }
 
   userNameElement.textContent = adminUser.nome || adminUser.username || 'Administrador';
+  if (userRoleLabel) {
+    if (isMasterAdmin()) {
+      userRoleLabel.textContent = 'Administrador master';
+    } else if (getAdminLocationScope().length > 0) {
+      userRoleLabel.textContent = `Administrador • ${getAdminLocationScope().join(', ')}`;
+    } else {
+      userRoleLabel.textContent = 'Administrador';
+    }
+  }
 }
 
 function applyAdminBackground() {
@@ -84,6 +99,49 @@ function applyAdminBackground() {
 
   sessionStorage.setItem(ADMIN_BACKGROUND_STORAGE_KEY, selectedImage);
   adminBackgroundImage.style.backgroundImage = `url('${selectedImage}')`;
+}
+
+function isMasterAdmin() {
+  return String(adminUser.role || '').toLowerCase() === 'master' || String(adminUser.username || '').toLowerCase() === 'admin';
+}
+
+function getAdminLocationScope() {
+  if (isMasterAdmin()) {
+    return [];
+  }
+
+  const rawScope =
+    Array.isArray(adminUser.localizacoes) && adminUser.localizacoes.length > 0
+      ? adminUser.localizacoes
+      : adminUser.localizacao
+        ? [adminUser.localizacao]
+        : [];
+
+  return [...new Set(rawScope.map((value) => String(value || '').trim()).filter(Boolean))];
+}
+
+function canAccessLocation(location) {
+  const scope = getAdminLocationScope();
+  if (scope.length === 0) {
+    return true;
+  }
+  return scope.map((value) => value.toLowerCase()).includes(String(location || '').trim().toLowerCase());
+}
+
+function getScopedItems() {
+  return items.filter((item) => canAccessLocation(item.localizacao));
+}
+
+function canAccessLoan(loan) {
+  const fallbackLocation = getItemById(loan.itemId)?.localizacao || '';
+  return canAccessLocation(loan.localizacao || fallbackLocation);
+}
+
+function canAccessSolicitacao(solicitacao) {
+  return (solicitacao.itens || []).every((line) => {
+    const fallbackLocation = getItemById(line.itemId)?.localizacao || '';
+    return canAccessLocation(line.itemLocalizacao || fallbackLocation);
+  });
 }
 
 async function parseJsonResponse(response) {
@@ -118,6 +176,46 @@ async function fetchActiveLoans() {
 
 async function fetchSolicitacoes() {
   const response = await fetch(`${API_URL}/solicitacoes`);
+  return parseJsonResponse(response);
+}
+
+async function fetchAdminUsers() {
+  const response = await fetch(`${API_URL}/admin-users`);
+  adminUsers = await parseJsonResponse(response);
+  return adminUsers;
+}
+
+async function inviteAdminUser(payload) {
+  const response = await fetch(`${API_URL}/admin-users/invite`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonResponse(response);
+}
+
+async function updateAdminUser(userId, payload) {
+  const response = await fetch(`${API_URL}/admin-users/${userId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonResponse(response);
+}
+
+async function deleteAdminUser(userId) {
+  const response = await fetch(`${API_URL}/admin-users/${userId}`, {
+    method: 'DELETE',
+  });
+  return parseJsonResponse(response);
+}
+
+async function requestAdminPasswordReset(userId) {
+  const response = await fetch(`${API_URL}/admin-users/${userId}/request-reset`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
   return parseJsonResponse(response);
 }
 
@@ -166,7 +264,11 @@ async function aprovarSolicitacao(id, itemsPayload) {
   const response = await fetch(`${API_URL}/solicitacoes/${id}/aprovar`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ items: itemsPayload }),
+    body: JSON.stringify({
+      items: itemsPayload,
+      adminLocalizacoes: getAdminLocationScope(),
+      adminRole: adminUser.role || 'admin',
+    }),
   });
   return parseJsonResponse(response);
 }
@@ -184,7 +286,13 @@ async function updateMetadata(field, oldValue, newValue) {
   const response = await fetch(`${API_URL}/metadata`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ field, oldValue, newValue }),
+    body: JSON.stringify({
+      field,
+      oldValue,
+      newValue,
+      adminLocalizacoes: getAdminLocationScope(),
+      adminRole: adminUser.role || 'admin',
+    }),
   });
   return parseJsonResponse(response);
 }
@@ -193,7 +301,12 @@ async function createMetadata(field, value) {
   const response = await fetch(`${API_URL}/metadata`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ field, value }),
+    body: JSON.stringify({
+      field,
+      value,
+      adminLocalizacoes: getAdminLocationScope(),
+      adminRole: adminUser.role || 'admin',
+    }),
   });
   return parseJsonResponse(response);
 }
@@ -202,7 +315,12 @@ async function deleteMetadata(field, value) {
   const response = await fetch(`${API_URL}/metadata`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ field, value }),
+    body: JSON.stringify({
+      field,
+      value,
+      adminLocalizacoes: getAdminLocationScope(),
+      adminRole: adminUser.role || 'admin',
+    }),
   });
   return parseJsonResponse(response);
 }
@@ -328,6 +446,20 @@ function showCustomModal({ title, bodyHtml, confirmText = 'Confirmar', cancelTex
   });
 }
 
+function showInfoModal({ title, message, buttonText = 'Fechar' }) {
+  return new Promise((resolve) => {
+    siteModalResolver = resolve;
+    openSiteModal({
+      title,
+      bodyHtml: `<p class="modal-text">${escapeHtml(message)}</p>`,
+      footerHtml: `<button type="button" class="btn-primary" id="siteModalConfirmBtn">${escapeHtml(buttonText)}</button>`,
+      onOpen: () => {
+        document.getElementById('siteModalConfirmBtn').addEventListener('click', () => closeSiteModal(true));
+      },
+    });
+  });
+}
+
 function createLineId(prefix) {
   lineSequence += 1;
   return `${prefix}-${lineSequence}`;
@@ -349,13 +481,52 @@ function formatSolicitacaoItens(itens) {
   return itens.map((item) => `${item.itemNome} x${item.quantidade}`).join('<br>');
 }
 
-function searchItems(query) {
+function getSelectedAdminLoanLocation() {
+  return String(emprestimoLocalizacaoInput?.value || '').trim();
+}
+
+function populateAdminLoanLocationOptions() {
+  if (!emprestimoLocalizacaoInput) {
+    return;
+  }
+
+  const currentValue = emprestimoLocalizacaoInput.value;
+  const scopeLocations = getAdminLocationScope();
+  const availableLocations =
+    scopeLocations.length > 0
+      ? [...scopeLocations]
+      : [...new Set((metadataOptions.localizacao || []).map((value) => String(value || '').trim()).filter(Boolean))].sort((a, b) =>
+          a.localeCompare(b, 'pt-BR')
+        );
+
+  emprestimoLocalizacaoInput.innerHTML = `
+    <option value="">Selecione o laboratório...</option>
+    ${availableLocations
+      .map(
+        (location) => `<option value="${escapeHtml(location)}" ${location === currentValue ? 'selected' : ''}>${escapeHtml(location)}</option>`
+      )
+      .join('')}
+  `;
+
+  if (scopeLocations.length === 1) {
+    emprestimoLocalizacaoInput.value = scopeLocations[0];
+    emprestimoLocalizacaoInput.disabled = true;
+  } else {
+    emprestimoLocalizacaoInput.disabled = false;
+    if (currentValue && availableLocations.includes(currentValue)) {
+      emprestimoLocalizacaoInput.value = currentValue;
+    }
+  }
+}
+
+function searchItems(query, options = {}) {
   const normalized = query.trim().toLowerCase();
+  const locationFilter = String(options.location || '').trim();
   if (!normalized) {
     return [];
   }
 
-  return items.filter((item) => {
+  return getScopedItems().filter((item) => {
     const searchable = [
       item.titulo,
       item.marca,
@@ -366,13 +537,19 @@ function searchItems(query) {
       .filter(Boolean)
       .join(' ')
       .toLowerCase();
-    return searchable.includes(normalized);
+    return searchable.includes(normalized) && (!locationFilter || String(item.localizacao || '').trim() === locationFilter);
   });
 }
 
 function uniqueFieldValues(field, query) {
   const normalized = query.trim().toLowerCase();
-  return [...new Set([...(metadataOptions[field] || []), ...items.map((item) => item[field]).filter(Boolean)])]
+  const scopeLocations = getAdminLocationScope();
+  const sourceValues =
+    field === 'localizacao' && scopeLocations.length > 0
+      ? scopeLocations
+      : [...(metadataOptions[field] || []), ...getScopedItems().map((item) => item[field]).filter(Boolean)];
+
+  return [...new Set(sourceValues)]
     .filter((value) => value.toLowerCase().includes(normalized))
     .sort((a, b) => a.localeCompare(b, 'pt-BR'));
 }
@@ -444,6 +621,12 @@ function clearExistingItemMode() {
       field.disabled = false;
     }
   );
+
+  const scopeLocations = getAdminLocationScope();
+  if (!isMasterAdmin() && scopeLocations.length === 1) {
+    itemLocalizacaoInput.value = scopeLocations[0];
+    itemLocalizacaoInput.disabled = true;
+  }
 }
 
 function resetCadastrarItemForm() {
@@ -503,7 +686,8 @@ function renderAdminLoanLines() {
   adminLoanItemsContainer.innerHTML = adminLoanLines
     .map((line, index) => {
       const item = getItemById(line.itemId);
-      const suggestions = !item && line.query ? searchItems(line.query).filter((entry) => entry.disponiveis > 0) : [];
+      const selectedLocation = getSelectedAdminLoanLocation();
+      const suggestions = !item && line.query ? searchItems(line.query, { location: selectedLocation }).filter((entry) => entry.disponiveis > 0) : [];
       const maxQuantity = item ? Math.max(1, item.unidadesDisponiveis.length) : 1;
       const quantityOptions = Array.from({ length: maxQuantity }, (_, optionIndex) => optionIndex + 1)
         .map(
@@ -516,7 +700,7 @@ function renderAdminLoanLines() {
           <div class="item-line-header">
             <div>
               <h3>Item ${index + 1}</h3>
-              <p>Selecione o título e os patrimônios reservados para este empréstimo.</p>
+              <p>${selectedLocation ? 'Selecione o título e os patrimônios reservados para este empréstimo.' : 'Selecione primeiro o laboratório para buscar os itens disponíveis.'}</p>
             </div>
             <div class="item-line-tools">
               <label class="inline-field">
@@ -532,7 +716,9 @@ function renderAdminLoanLines() {
           </div>
           <div class="form-group">
             <label>Título do item *</label>
-            <input type="text" class="line-search-input" value="${escapeHtml(item ? item.titulo : line.query)}" placeholder="Digite o título, a marca ou o modelo..." autocomplete="off">
+            <input type="text" class="line-search-input" value="${escapeHtml(item ? item.titulo : line.query)}" placeholder="${escapeHtml(
+              selectedLocation ? 'Digite o título, a marca ou o modelo...' : 'Selecione o laboratório antes de pesquisar'
+            )}" autocomplete="off" ${selectedLocation ? '' : 'disabled'}>
             <div class="suggestions-list ${suggestions.length ? 'active' : ''}">
               ${suggestions
                 .map(
@@ -630,9 +816,270 @@ function renderMetadataTags(field, values, containerId) {
     .join('');
 }
 
+function getAdminStatusLabel(user) {
+  if (user.mustResetPassword) {
+    return '<span class="status-cancelado">Reset pendente</span>';
+  }
+
+  if (user.status === 'active') {
+    return '<span class="status-concluido">Ativo</span>';
+  }
+
+  return '<span class="status-ativo">Primeiro acesso pendente</span>';
+}
+
+function normalizeAdminLocations(user) {
+  const rawLocations =
+    Array.isArray(user?.localizacoes) && user.localizacoes.length > 0
+      ? user.localizacoes
+      : user?.localizacao
+        ? [user.localizacao]
+        : [];
+
+  return [...new Set(rawLocations.map((value) => String(value || '').trim()).filter(Boolean))];
+}
+
+function buildLocationChecklistHtml(selectedLocations = []) {
+  const locations = [...(metadataOptions.localizacao || [])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+  if (!locations.length) {
+    return '<p class="empty-inline">Cadastre uma localização antes de criar administradores.</p>';
+  }
+
+  return `
+    <div class="location-checklist">
+      ${locations
+        .map(
+          (location) => `
+            <label class="location-check-item">
+              <input type="checkbox" class="admin-location-checkbox" value="${escapeHtml(location)}" ${
+                selectedLocations.includes(location) ? 'checked' : ''
+              }>
+              <span>${escapeHtml(location)}</span>
+            </label>
+          `
+        )
+        .join('')}
+    </div>
+  `;
+}
+
+function getCheckedAdminLocations() {
+  return [...document.querySelectorAll('.admin-location-checkbox:checked')].map((input) => input.value);
+}
+
+function renderAdminUsersTable() {
+  if (!adminsTableBody || !isMasterAdmin()) {
+    return;
+  }
+
+  if (!adminUsers.length) {
+    adminsTableBody.innerHTML = '<tr><td colspan="6" class="empty-message">Nenhum administrador cadastrado</td></tr>';
+    return;
+  }
+
+  adminsTableBody.innerHTML = adminUsers
+    .map(
+      (user) => `
+        <tr>
+          <td>${escapeHtml(user.nome || '-')}</td>
+          <td>${escapeHtml(user.email || user.username || '-')}</td>
+          <td>${user.role === 'master' ? 'Master' : 'Administrador'}</td>
+          <td>${escapeHtml(normalizeAdminLocations(user).join(', ') || '-')}</td>
+          <td>${getAdminStatusLabel(user)}</td>
+          <td>
+            ${
+              user.role === 'master'
+                ? '<span class="empty-inline">Conta principal</span>'
+                : user.status !== 'active'
+                  ? `
+                    <button class="btn-secondary btn-sm" data-action="edit-admin" data-admin-id="${user.id}">Editar áreas</button>
+                    <button class="btn-danger btn-sm" data-action="delete-admin" data-admin-id="${user.id}">Remover</button>
+                  `
+                  : `
+                    <button class="btn-secondary btn-sm" data-action="edit-admin" data-admin-id="${user.id}">Editar áreas</button>
+                    <button class="btn-secondary btn-sm" data-action="request-admin-reset" data-admin-id="${user.id}">Resetar senha</button>
+                    <button class="btn-danger btn-sm" data-action="delete-admin" data-admin-id="${user.id}">Remover</button>
+                  `
+            }
+          </td>
+        </tr>
+      `
+    )
+    .join('');
+}
+
+async function loadAdminUsers() {
+  if (!isMasterAdmin()) {
+    adminUsers = [];
+    renderAdminUsersTable();
+    return;
+  }
+
+  await fetchAdminUsers();
+  renderAdminUsersTable();
+}
+
+async function handleInviteAdmin() {
+  const result = await showCustomModal({
+    title: 'Novo Administrador',
+    bodyHtml: `
+      <div class="modal-form-grid">
+        <label class="modal-form-field">
+          <span>E-mail institucional</span>
+          <input type="email" id="adminInviteEmail" placeholder="nome.sobrenome@unesp.br">
+        </label>
+        <label class="modal-form-field">
+          <span>Localizações responsáveis</span>
+          ${buildLocationChecklistHtml()}
+        </label>
+        <div class="modal-inline-error" id="adminInviteError" style="display: none;"></div>
+      </div>
+    `,
+    confirmText: 'Autorizar e-mail',
+    onConfirm: async () => {
+      const email = document.getElementById('adminInviteEmail').value.trim();
+      const localizacoes = getCheckedAdminLocations();
+
+      if (!email || localizacoes.length === 0) {
+        const errorBox = document.getElementById('adminInviteError');
+        errorBox.style.display = 'block';
+        errorBox.textContent = 'Informe o e-mail e selecione pelo menos uma localização.';
+        return false;
+      }
+
+      await inviteAdminUser({ email, localizacoes });
+      return true;
+    },
+  });
+
+  if (!result) {
+    return;
+  }
+
+  await loadAdminUsers();
+  await showInfoModal({
+    title: 'Administrador autorizado',
+    message: 'O e-mail foi autorizado com sucesso. O novo administrador já pode concluir o primeiro acesso pelo botão Novo Administrador na tela inicial.',
+  });
+}
+
+async function handleAdminResetPassword(userId) {
+  const adminEntry = adminUsers.find((user) => Number(user.id) === Number(userId));
+  if (!adminEntry) {
+    showFeedback('cadastroItemFeedback', 'Administrador não encontrado.', 'error');
+    return;
+  }
+
+  const confirmed = await showConfirmModal({
+    title: 'Resetar senha do administrador',
+    message: `Deseja liberar a redefinição de senha para ${adminEntry.nome || adminEntry.email}?`,
+    confirmText: 'Liberar reset',
+  });
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await requestAdminPasswordReset(userId);
+    await loadAdminUsers();
+    await showInfoModal({
+      title: 'Reset liberado',
+      message: 'O reset de senha foi liberado. No próximo login, o administrador deverá cadastrar uma nova senha.',
+    });
+  } catch (error) {
+    await showInfoModal({
+      title: 'Não foi possível liberar o reset',
+      message: error.message || 'Erro ao liberar o reset de senha.',
+    });
+  }
+}
+
+async function handleEditAdmin(userId) {
+  const adminEntry = adminUsers.find((user) => Number(user.id) === Number(userId));
+  if (!adminEntry) {
+    return;
+  }
+
+  const result = await showCustomModal({
+    title: 'Editar administrador',
+    bodyHtml: `
+      <div class="modal-form-grid">
+        <label class="modal-form-field">
+          <span>E-mail institucional</span>
+          <input type="email" id="adminEditEmail" value="${escapeHtml(adminEntry.email || '')}">
+        </label>
+        <label class="modal-form-field">
+          <span>Localizações responsáveis</span>
+          ${buildLocationChecklistHtml(normalizeAdminLocations(adminEntry))}
+        </label>
+        <div class="modal-inline-error" id="adminEditError" style="display: none;"></div>
+      </div>
+    `,
+    confirmText: 'Salvar alterações',
+    onConfirm: async () => {
+      const email = document.getElementById('adminEditEmail').value.trim();
+      const localizacoes = getCheckedAdminLocations();
+
+      if (!email || localizacoes.length === 0) {
+        const errorBox = document.getElementById('adminEditError');
+        errorBox.style.display = 'block';
+        errorBox.textContent = 'Informe o e-mail e selecione pelo menos uma localização.';
+        return false;
+      }
+
+      await updateAdminUser(userId, { email, localizacoes });
+      return true;
+    },
+  });
+
+  if (!result) {
+    return;
+  }
+
+  await loadAdminUsers();
+  await showInfoModal({
+    title: 'Administrador atualizado',
+    message: 'As áreas responsáveis do administrador foram atualizadas com sucesso.',
+  });
+}
+
+async function handleDeleteAdmin(userId) {
+  const adminEntry = adminUsers.find((user) => Number(user.id) === Number(userId));
+  if (!adminEntry) {
+    return;
+  }
+
+  const confirmed = await showConfirmModal({
+    title: 'Remover administrador',
+    message: `Deseja remover a conta de ${adminEntry.nome || adminEntry.email}?`,
+    confirmText: 'Remover conta',
+    danger: true,
+  });
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await deleteAdminUser(userId);
+    await loadAdminUsers();
+    await showInfoModal({
+      title: 'Administrador removido',
+      message: 'A conta do administrador foi removida com sucesso.',
+    });
+  } catch (error) {
+    await showInfoModal({
+      title: 'Não foi possível remover',
+      message: error.message || 'Erro ao remover o administrador.',
+    });
+  }
+}
+
 function renderManageViews() {
   const itemQuery = document.getElementById('searchGerenciarItems').value.toLowerCase();
-  const filteredItems = items.filter((item) => {
+  const filteredItems = getScopedItems().filter((item) => {
     if (!itemQuery) {
       return true;
     }
@@ -653,6 +1100,7 @@ function renderManageViews() {
   renderMetadataTags('marca', uniqueFieldValues('marca', document.getElementById('searchMarcas').value || ''), 'marcasList');
   renderMetadataTags('modelo', uniqueFieldValues('modelo', document.getElementById('searchModelos').value || ''), 'modelosList');
   renderMetadataTags('localizacao', uniqueFieldValues('localizacao', document.getElementById('searchLocalizacoes').value || ''), 'localizacoesList');
+  renderAdminUsersTable();
 }
 
 function updateSolicitacoesBadge(count) {
@@ -662,7 +1110,7 @@ function updateSolicitacoesBadge(count) {
 }
 
 async function loadActiveLoans() {
-  const loans = await fetchActiveLoans();
+  const loans = (await fetchActiveLoans()).filter((loan) => canAccessLoan(loan));
   const tbody = document.getElementById('ativosTableBody');
   const searchInput = document.getElementById('searchAtivos');
   const bulkConcluirBtn = document.getElementById('bulkConcluirBtn');
@@ -688,7 +1136,7 @@ async function loadActiveLoans() {
 
   function render(loansToRender) {
     if (!loansToRender.length) {
-      tbody.innerHTML = '<tr><td colspan="9" class="empty-message">Nenhum empréstimo ativo</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="empty-message">Nenhum empréstimo ativo</td></tr>';
       updateBulkSelectionState([]);
       return;
     }
@@ -702,6 +1150,7 @@ async function loadActiveLoans() {
             <td>${escapeHtml(loan.loanGroupId || '-')}</td>
             <td>${escapeHtml(loan.itemNome || 'Item não especificado')}</td>
             <td>${escapeHtml(loan.itemPatrimonio || '-')}</td>
+            <td>${escapeHtml(loan.localizacao || getItemById(loan.itemId)?.localizacao || '-')}</td>
             <td>${escapeHtml(loan.solicitante || '-')}</td>
             <td>${new Date(loan.dataRetirada).toLocaleDateString('pt-BR')}</td>
             <td>${new Date(loan.dataDevolucaoPrevista).toLocaleDateString('pt-BR')}</td>
@@ -815,7 +1264,7 @@ async function loadActiveLoans() {
 }
 
 async function loadHistorico() {
-  const loans = await fetchLoans();
+  const loans = (await fetchLoans()).filter((loan) => canAccessLoan(loan));
   const concluded = loans.filter((loan) => loan.status === 'concluido');
   const tbody = document.getElementById('historicoTableBody');
   const searchInput = document.getElementById('searchHistorico');
@@ -863,7 +1312,7 @@ async function loadHistorico() {
 }
 
 async function loadSolicitacoes() {
-  const solicitacoes = await fetchSolicitacoes();
+  const solicitacoes = (await fetchSolicitacoes()).filter((solicitacao) => canAccessSolicitacao(solicitacao));
   const pendentes = solicitacoes.filter((solicitacao) => solicitacao.status === 'pendente');
   const tbody = document.getElementById('solicitacoesTableBody');
   updateSolicitacoesBadge(pendentes.length);
@@ -916,6 +1365,8 @@ async function handleCadastrarItemSubmit(event) {
     serial: itemSerialInput.value.trim(),
     tipo: itemTipoInput.value,
     localizacao: itemLocalizacaoInput.value.trim(),
+    adminLocalizacoes: getAdminLocationScope(),
+    adminRole: adminUser.role || 'admin',
   };
 
   if (!payload.titulo || !payload.marca || !payload.modelo || !payload.tipo) {
@@ -940,6 +1391,8 @@ async function handleCadastrarItemSubmit(event) {
         existingItemId: selectedExistingItem.id,
         patrimonios: payload.patrimonios,
         serial: payload.serial,
+        adminLocalizacoes: getAdminLocationScope(),
+        adminRole: adminUser.role || 'admin',
       });
       showFeedback('cadastroItemFeedback', 'Nova unidade adicionada ao item existente.', 'success');
     } else {
@@ -955,10 +1408,19 @@ async function handleCadastrarItemSubmit(event) {
 }
 
 function collectAdminLoanPayload() {
+  const selectedLocation = getSelectedAdminLoanLocation();
   return adminLoanLines.map((line) => {
     const item = getItemById(line.itemId);
     if (!item) {
       throw new Error('Selecione todos os itens do empréstimo.');
+    }
+
+    if (!selectedLocation) {
+      throw new Error('Selecione o laboratório do empréstimo antes de escolher os itens.');
+    }
+
+    if (String(item.localizacao || '').trim() !== selectedLocation) {
+      throw new Error(`O item ${item.titulo} não pertence ao laboratório selecionado.`);
     }
 
     normalizeUnitSelections(line);
@@ -991,13 +1453,16 @@ async function handleCadastrarEmprestimoSubmit(event) {
     items: payloadItems,
     solicitante: document.getElementById('emprestimoSolicitante').value.trim(),
     email: document.getElementById('emprestimoEmail').value.trim(),
+    localizacao: getSelectedAdminLoanLocation(),
     dataRetirada: document.getElementById('emprestimoDataRetirada').value,
     dataDevolucaoPrevista: document.getElementById('emprestimoDataDevolucao').value,
     observacoes: document.getElementById('emprestimoObservacoes').value.trim(),
+    adminLocalizacoes: getAdminLocationScope(),
+    adminRole: adminUser.role || 'admin',
   };
 
-  if (!payload.solicitante || !payload.dataRetirada || !payload.dataDevolucaoPrevista) {
-    showFeedback('cadastroEmprestimoFeedback', 'Preencha solicitante e datas obrigatórias.', 'error');
+  if (!payload.solicitante || !payload.localizacao || !payload.dataRetirada || !payload.dataDevolucaoPrevista) {
+    showFeedback('cadastroEmprestimoFeedback', 'Preencha solicitante, laboratório e datas obrigatórias.', 'error');
     return;
   }
 
@@ -1005,6 +1470,7 @@ async function handleCadastrarEmprestimoSubmit(event) {
     await createLoan(payload);
     showFeedback('cadastroEmprestimoFeedback', 'Empréstimo registrado com sucesso.', 'success');
     document.getElementById('cadastrarEmprestimoForm').reset();
+    populateAdminLoanLocationOptions();
     adminLoanLines = [createAdminLoanLine()];
     renderAdminLoanLines();
     await fetchItems();
@@ -1017,7 +1483,7 @@ async function handleCadastrarEmprestimoSubmit(event) {
 }
 
 async function openApproveModal(requestId) {
-  const solicitacoes = await fetchSolicitacoes();
+  const solicitacoes = (await fetchSolicitacoes()).filter((entry) => canAccessSolicitacao(entry));
   const solicitacao = solicitacoes.find((entry) => entry.id === requestId);
   if (!solicitacao) {
     showFeedback('cadastroEmprestimoFeedback', 'Solicitação não encontrada.', 'error');
@@ -1142,7 +1608,12 @@ async function handleEditItem(itemId) {
   }
 
   try {
-    await updateItem(itemId, values);
+    await updateItem(itemId, {
+      ...values,
+      localizacao: isMasterAdmin() ? values.localizacao : item.localizacao,
+      adminLocalizacoes: getAdminLocationScope(),
+      adminRole: adminUser.role || 'admin',
+    });
     showFeedback('cadastroItemFeedback', 'Item atualizado com sucesso.', 'success');
     await refreshAfterInventoryChange();
   } catch (error) {
@@ -1408,6 +1879,18 @@ function setupGlobalTableActions() {
     if (action === 'delete-metadata') {
       await handleMetadataDelete(actionElement.dataset.field, actionElement.dataset.value);
     }
+
+    if (action === 'request-admin-reset') {
+      await handleAdminResetPassword(Number(actionElement.dataset.adminId));
+    }
+
+    if (action === 'edit-admin') {
+      await handleEditAdmin(Number(actionElement.dataset.adminId));
+    }
+
+    if (action === 'delete-admin') {
+      await handleDeleteAdmin(Number(actionElement.dataset.adminId));
+    }
   });
 }
 
@@ -1488,6 +1971,53 @@ function setupLogout() {
   });
 }
 
+function setupAdminAccessControl() {
+  const isMaster = isMasterAdmin();
+  const adminPane = document.getElementById('manage-administradores');
+  const localizacoesTab = document.querySelector('[data-manage-tab="manage-localizacoes"]');
+  const localizacoesPane = document.getElementById('manage-localizacoes');
+  const scopeLocations = getAdminLocationScope();
+
+  if (manageAdministradoresTab) {
+    manageAdministradoresTab.hidden = !isMaster;
+  }
+
+  if (adminPane) {
+    adminPane.hidden = !isMaster;
+  }
+
+  if (localizacoesTab) {
+    localizacoesTab.hidden = !isMaster;
+  }
+
+  if (localizacoesPane) {
+    localizacoesPane.hidden = !isMaster;
+  }
+
+  if (!isMaster) {
+    if (scopeLocations.length === 1) {
+      itemLocalizacaoInput.value = scopeLocations[0];
+      itemLocalizacaoInput.disabled = true;
+    } else {
+      itemLocalizacaoInput.value = '';
+      itemLocalizacaoInput.disabled = false;
+    }
+
+    const activeManageTab = document.querySelector('.manage-tab-btn.active');
+    if (activeManageTab?.dataset.manageTab === 'manage-localizacoes') {
+      activeManageTab.classList.remove('active');
+      localizacoesPane?.classList.remove('active');
+      const firstVisibleManageTab = [...manageTabs].find((tab) => !tab.hidden);
+      if (firstVisibleManageTab) {
+        firstVisibleManageTab.classList.add('active');
+        document.getElementById(firstVisibleManageTab.dataset.manageTab)?.classList.add('active');
+      }
+    }
+  }
+
+  populateAdminLoanLocationOptions();
+}
+
 function setupOutsideSuggestionClose() {
   document.addEventListener('click', (event) => {
     if (!itemTituloInput.contains(event.target) && !tituloSuggestions.contains(event.target)) {
@@ -1514,6 +2044,7 @@ function setupDates() {
 async function init() {
   applyAdminBackground();
   updateUserInfo();
+  setupAdminAccessControl();
   setupModalCloseActions();
   setupTabs();
   setupSearches();
@@ -1531,10 +2062,17 @@ async function init() {
   document.getElementById('cadastrarItemForm').addEventListener('submit', handleCadastrarItemSubmit);
   document.getElementById('cadastrarEmprestimoForm').addEventListener('submit', handleCadastrarEmprestimoSubmit);
   clearExistingItemBtn.addEventListener('click', clearExistingItemMode);
+  emprestimoLocalizacaoInput.addEventListener('change', () => {
+    adminLoanLines = [createAdminLoanLine()];
+    renderAdminLoanLines();
+  });
   addAdminLoanItemBtn.addEventListener('click', () => {
     adminLoanLines.push(createAdminLoanLine());
     renderAdminLoanLines();
   });
+  if (openCreateAdminBtn) {
+    openCreateAdminBtn.addEventListener('click', handleInviteAdmin);
+  }
   goToCadastrarItemBtn.addEventListener('click', async () => {
     await activateMainTab('cadastrar-item');
     itemTituloInput.focus();
@@ -1543,6 +2081,8 @@ async function init() {
 
   await fetchItems();
   await fetchMetadata();
+  populateAdminLoanLocationOptions();
+  await loadAdminUsers();
   adminLoanLines = [createAdminLoanLine()];
   renderAdminLoanLines();
   renderManageViews();

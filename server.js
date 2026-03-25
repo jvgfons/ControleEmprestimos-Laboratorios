@@ -8,6 +8,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const DADOS_DIR = path.join(__dirname, 'dados');
 const ALLOWED_METADATA_FIELDS = new Set(['marca', 'modelo', 'localizacao']);
+const INSTITUTIONAL_EMAIL_REGEX = /^[A-Z0-9._%+-]+@unesp\.br$/i;
+const PASSWORD_RULE_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[^A-Za-z0-9]).{8,}$/;
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -76,6 +78,133 @@ function writeMetadataStore(store) {
       a.localeCompare(b, 'pt-BR')
     ),
   });
+}
+
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizeLocation(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizeLocationList(values) {
+  const rawValues = Array.isArray(values)
+    ? values
+    : values || values === ''
+      ? [values]
+      : [];
+
+  return [...new Set(rawValues.map((value) => String(value || '').trim()).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b, 'pt-BR')
+  );
+}
+
+function isValidInstitutionalEmail(email) {
+  return INSTITUTIONAL_EMAIL_REGEX.test(normalizeEmail(email));
+}
+
+function isStrongPassword(password) {
+  return PASSWORD_RULE_REGEX.test(String(password || ''));
+}
+
+function getPasswordRequirementMessage() {
+  return 'A senha deve ter pelo menos 8 caracteres, com letras maiusculas, minusculas e caractere especial';
+}
+
+function normalizeUser(rawUser, index) {
+  const email = normalizeEmail(rawUser?.email);
+  const username = String(rawUser?.username || email || `admin${index + 1}`).trim();
+  const role = rawUser?.role === 'master' || username.toLowerCase() === 'admin' ? 'master' : 'admin';
+  const nome = String(rawUser?.nome || '').trim();
+  const password = String(rawUser?.password || '').trim();
+  const localizacoes = normalizeLocationList(
+    Array.isArray(rawUser?.localizacoes) && rawUser.localizacoes.length > 0 ? rawUser.localizacoes : rawUser?.localizacao
+  );
+  const localizacao = localizacoes[0] || '';
+  const mustResetPassword = Boolean(rawUser?.mustResetPassword || rawUser?.resetPasswordRequired);
+  const statusInformado = String(rawUser?.status || '').trim().toLowerCase();
+
+  const status =
+    role === 'master'
+      ? 'active'
+      : statusInformado === 'active' || statusInformado === 'invited'
+        ? statusInformado
+        : nome && password && localizacoes.length > 0
+          ? 'active'
+          : 'invited';
+
+  return {
+    id: Number(rawUser?.id) || index + 1,
+    username,
+    email,
+    password,
+    nome,
+    role,
+    localizacao,
+    localizacoes,
+    status,
+    mustResetPassword,
+    createdAt: rawUser?.createdAt || null,
+    updatedAt: rawUser?.updatedAt || null,
+  };
+}
+
+function serializeUser(user) {
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    password: user.password,
+    nome: user.nome,
+    role: user.role,
+    localizacao: user.localizacao,
+    localizacoes: normalizeLocationList(user.localizacoes),
+    status: user.status,
+    mustResetPassword: Boolean(user.mustResetPassword),
+    createdAt: user.createdAt || null,
+    updatedAt: user.updatedAt || null,
+  };
+}
+
+function getUsersRaw() {
+  return readJSONFile('users.json').map(normalizeUser);
+}
+
+function saveUsers(users) {
+  writeJSONFile(
+    'users.json',
+    users.map((user) => serializeUser(user))
+  );
+}
+
+function isMasterUser(user) {
+  return String(user?.role || '').trim().toLowerCase() === 'master' || String(user?.username || '').trim().toLowerCase() === 'admin';
+}
+
+function getUserResponse(user) {
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    nome: user.nome,
+    role: isMasterUser(user) ? 'master' : 'admin',
+    localizacao: user.localizacao,
+    localizacoes: normalizeLocationList(user.localizacoes),
+    status: user.status,
+    mustResetPassword: Boolean(user.mustResetPassword),
+  };
+}
+
+function findUserByIdentifier(users, identifier) {
+  const rawIdentifier = String(identifier || '').trim();
+  const normalizedIdentifier = normalizeEmail(identifier);
+
+  return users.find(
+    (user) =>
+      String(user.username || '').trim() === rawIdentifier ||
+      (user.email && normalizeEmail(user.email) === normalizedIdentifier)
+  );
 }
 
 function getMetadataValues(field, items = getItemsRaw()) {
@@ -258,6 +387,7 @@ function normalizeSolicitacao(rawSolicitacao) {
     id: String(item.id || `${rawSolicitacao.id}-item-${index + 1}`),
     itemId: Number(item.itemId),
     itemNome: String(item.itemNome || '').trim(),
+    itemLocalizacao: String(item.itemLocalizacao || '').trim(),
     quantidade: Math.max(1, Number(item.quantidade) || 1),
     itemPatrimonios: Array.isArray(item.itemPatrimonios)
       ? item.itemPatrimonios.map((value) => String(value || '').trim()).filter(Boolean)
@@ -294,6 +424,7 @@ function serializeSolicitacao(solicitacao) {
       id: item.id,
       itemId: item.itemId,
       itemNome: item.itemNome,
+      itemLocalizacao: item.itemLocalizacao || '',
       quantidade: item.quantidade,
       itemPatrimonios: item.itemPatrimonios || [],
       itemUnitIds: item.itemUnitIds || [],
@@ -466,6 +597,7 @@ function normalizeLineItems(itemsInput, fallbackItem) {
     id: String(item.id || `line-${index + 1}`),
     itemId: Number(item.itemId),
     itemNome: String(item.itemNome || '').trim(),
+    itemLocalizacao: String(item.itemLocalizacao || '').trim(),
     quantidade: Math.max(1, Number(item.quantidade || item.quantity) || 1),
     unitIds: Array.isArray(item.unitIds)
       ? item.unitIds.map((value) => String(value || '').trim()).filter(Boolean)
@@ -549,25 +681,380 @@ function assertRequestedQuantities(lines, availabilityContext) {
   });
 }
 
+function assertAdminLocationAccess(item, requestBody) {
+  if (itemIsWithinAdminScope(item, requestBody)) {
+    return;
+  }
+
+  throw new Error(`O item ${item.titulo} nao pertence a localizacao autorizada para este administrador`);
+}
+
+function getAdminScopeLocations(requestBody) {
+  const role = String(requestBody?.adminRole || '').trim().toLowerCase();
+  const scopeLocations = normalizeLocationList(
+    Array.isArray(requestBody?.adminLocalizacoes) && requestBody.adminLocalizacoes.length > 0
+      ? requestBody.adminLocalizacoes
+      : requestBody?.adminLocalizacao
+  );
+
+  if (scopeLocations.length === 0 || role === 'master') {
+    return [];
+  }
+
+  return scopeLocations.map((value) => normalizeLocation(value));
+}
+
+function itemIsWithinAdminScope(item, requestBody) {
+  const scopeLocations = getAdminScopeLocations(requestBody);
+  if (scopeLocations.length === 0) {
+    return true;
+  }
+
+  return scopeLocations.includes(normalizeLocation(item?.localizacao));
+}
+
+function assertMasterForLocationMetadata(field, requestBody) {
+  if (field !== 'localizacao') {
+    return;
+  }
+
+  const role = String(requestBody?.adminRole || '').trim().toLowerCase();
+  if (role && role !== 'master') {
+    throw new Error('Somente o administrador master pode gerenciar localizacoes');
+  }
+}
+
 // ===== LOGIN =====
 app.post('/api/login', (req, res) => {
-  const { username, password } = req.body;
-  const users = readJSONFile('users.json');
-
-  const user = users.find((entry) => entry.username === username && entry.password === password);
+  const identifier = String(req.body?.username || req.body?.email || '').trim();
+  const password = String(req.body?.password || '');
+  const users = getUsersRaw();
+  const user = findUserByIdentifier(users, identifier);
 
   if (!user) {
     return res.status(401).json({ success: false, message: 'Credenciais invalidas' });
   }
 
+  if (user.status !== 'active') {
+    return res.status(403).json({
+      success: false,
+      code: 'FIRST_ACCESS_REQUIRED',
+      message: 'Este administrador ainda nao concluiu o primeiro acesso. Use o botao Novo Administrador.',
+      user: getUserResponse(user),
+    });
+  }
+
+  if (user.mustResetPassword) {
+    return res.status(403).json({
+      success: false,
+      code: 'RESET_REQUIRED',
+      message: 'A senha foi redefinida. Cadastre uma nova senha para continuar.',
+      user: getUserResponse(user),
+    });
+  }
+
+  if (user.password !== password) {
+    return res.status(401).json({ success: false, message: 'Credenciais invalidas' });
+  }
+
   return res.json({
     success: true,
-    user: {
-      id: user.id,
-      username: user.username,
-      nome: user.nome,
-      role: user.role,
+    user: getUserResponse(user),
+  });
+});
+
+app.get('/api/admin-users', (req, res) => {
+  const users = getUsersRaw()
+    .sort((a, b) => {
+      if (isMasterUser(a) && !isMasterUser(b)) {
+        return -1;
+      }
+      if (!isMasterUser(a) && isMasterUser(b)) {
+        return 1;
+      }
+      return (a.nome || a.email || a.username).localeCompare(b.nome || b.email || b.username, 'pt-BR');
+    })
+    .map((user) => getUserResponse(user));
+
+  return res.json(users);
+});
+
+app.get('/api/admin-users/eligibility/:email', (req, res) => {
+  const email = normalizeEmail(req.params.email);
+
+  if (!isValidInstitutionalEmail(email)) {
+    return res.status(400).json({ error: 'Informe um e-mail institucional valido da UNESP' });
+  }
+
+  const users = getUsersRaw();
+  const user = users.find((entry) => normalizeEmail(entry.email) === email);
+
+  if (!user) {
+    return res.status(404).json({ error: 'Este e-mail ainda nao foi autorizado por um administrador master' });
+  }
+
+  if (isMasterUser(user)) {
+    return res.status(400).json({ error: 'Use o login padrao para acessar a conta administradora master' });
+  }
+
+  if (user.mustResetPassword) {
+    return res.json({
+      allowed: true,
+      mode: 'reset',
+      user: getUserResponse(user),
+    });
+  }
+
+  if (user.status === 'active') {
+    return res.status(409).json({ error: 'Este administrador ja concluiu o cadastro. Use o login padrao.' });
+  }
+
+  return res.json({
+    allowed: true,
+    mode: 'activate',
+    user: getUserResponse(user),
+  });
+});
+
+app.post('/api/admin-users/invite', (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  const localizacoes = normalizeLocationList(req.body?.localizacoes);
+
+  if (!isValidInstitutionalEmail(email)) {
+    return res.status(400).json({ error: 'Informe um e-mail institucional valido da UNESP' });
+  }
+
+  if (localizacoes.length === 0) {
+    return res.status(400).json({ error: 'Selecione pelo menos uma localizacao para o administrador' });
+  }
+
+  const availableLocations = getMetadataValues('localizacao');
+  const invalidLocation = localizacoes.find((value) => !availableLocations.includes(value));
+  if (invalidLocation) {
+    return res.status(400).json({ error: 'Uma das localizacoes selecionadas nao esta cadastrada no sistema' });
+  }
+
+  const users = getUsersRaw();
+  const existingUser = users.find((user) => normalizeEmail(user.email) === email);
+
+  if (existingUser) {
+    return res.status(400).json({ error: 'Ja existe um administrador vinculado a este e-mail' });
+  }
+
+  const invitedUser = normalizeUser(
+    {
+      id: nextNumericId(users),
+      username: email,
+      email,
+      role: 'admin',
+      status: 'invited',
+      password: '',
+      nome: '',
+      localizacao: localizacoes[0] || '',
+      localizacoes,
+      mustResetPassword: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     },
+    users.length
+  );
+
+  users.push(invitedUser);
+  saveUsers(users);
+
+  return res.status(201).json({
+    success: true,
+    user: getUserResponse(invitedUser),
+  });
+});
+
+app.post('/api/admin-users/activate', (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  const nome = String(req.body?.nome || '').trim();
+  const password = String(req.body?.password || '');
+  const confirmPassword = String(req.body?.confirmPassword || '');
+  const users = getUsersRaw();
+  const userIndex = users.findIndex((user) => normalizeEmail(user.email) === email);
+
+  if (!isValidInstitutionalEmail(email)) {
+    return res.status(400).json({ error: 'Informe um e-mail institucional valido da UNESP' });
+  }
+
+  if (userIndex === -1) {
+    return res.status(404).json({ error: 'Este e-mail ainda nao foi autorizado por um administrador master' });
+  }
+
+  if (users[userIndex].status === 'active' && !users[userIndex].mustResetPassword) {
+    return res.status(409).json({ error: 'Este administrador ja concluiu o cadastro. Use o login padrao.' });
+  }
+
+  if (!nome) {
+    return res.status(400).json({ error: 'Informe o nome do administrador' });
+  }
+
+  if (normalizeLocationList(users[userIndex].localizacoes).length === 0) {
+    return res.status(400).json({ error: 'Este administrador ainda nao possui localizacoes associadas. Atualize o cadastro no painel master.' });
+  }
+
+  if (password !== confirmPassword) {
+    return res.status(400).json({ error: 'A confirmacao de senha nao confere' });
+  }
+
+  if (!isStrongPassword(password)) {
+    return res.status(400).json({ error: getPasswordRequirementMessage() });
+  }
+
+  users[userIndex] = {
+    ...users[userIndex],
+    username: email,
+    nome,
+    password,
+    localizacao: normalizeLocationList(users[userIndex].localizacoes)[0] || '',
+    localizacoes: normalizeLocationList(users[userIndex].localizacoes),
+    status: 'active',
+    mustResetPassword: false,
+    updatedAt: new Date().toISOString(),
+  };
+
+  saveUsers(users);
+
+  return res.json({
+    success: true,
+    user: getUserResponse(users[userIndex]),
+  });
+});
+
+app.put('/api/admin-users/:id', (req, res) => {
+  const userId = Number(req.params.id);
+  const users = getUsersRaw();
+  const userIndex = users.findIndex((user) => Number(user.id) === userId);
+
+  if (userIndex === -1) {
+    return res.status(404).json({ error: 'Administrador nao encontrado' });
+  }
+
+  if (isMasterUser(users[userIndex])) {
+    return res.status(400).json({ error: 'A conta master nao pode ser alterada por este fluxo' });
+  }
+
+  const email = normalizeEmail(req.body?.email || users[userIndex].email);
+  const localizacoes = normalizeLocationList(req.body?.localizacoes);
+
+  if (!isValidInstitutionalEmail(email)) {
+    return res.status(400).json({ error: 'Informe um e-mail institucional valido da UNESP' });
+  }
+
+  if (localizacoes.length === 0) {
+    return res.status(400).json({ error: 'Selecione pelo menos uma localizacao para o administrador' });
+  }
+
+  const availableLocations = getMetadataValues('localizacao');
+  const invalidLocation = localizacoes.find((value) => !availableLocations.includes(value));
+  if (invalidLocation) {
+    return res.status(400).json({ error: 'Uma das localizacoes selecionadas nao esta cadastrada no sistema' });
+  }
+
+  const emailInUse = users.find((user, index) => index !== userIndex && normalizeEmail(user.email) === email);
+  if (emailInUse) {
+    return res.status(400).json({ error: 'Ja existe outro administrador com este e-mail' });
+  }
+
+  users[userIndex] = {
+    ...users[userIndex],
+    email,
+    username: email,
+    localizacao: localizacoes[0] || '',
+    localizacoes,
+    updatedAt: new Date().toISOString(),
+  };
+
+  saveUsers(users);
+
+  return res.json({
+    success: true,
+    user: getUserResponse(users[userIndex]),
+  });
+});
+
+app.delete('/api/admin-users/:id', (req, res) => {
+  const userId = Number(req.params.id);
+  const users = getUsersRaw();
+  const user = users.find((entry) => Number(entry.id) === userId);
+
+  if (!user) {
+    return res.status(404).json({ error: 'Administrador nao encontrado' });
+  }
+
+  if (isMasterUser(user)) {
+    return res.status(400).json({ error: 'A conta master nao pode ser removida' });
+  }
+
+  const filteredUsers = users.filter((entry) => Number(entry.id) !== userId);
+  saveUsers(filteredUsers);
+
+  return res.json({ success: true });
+});
+
+app.post('/api/admin-users/reset-password', (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  const password = String(req.body?.password || '');
+  const confirmPassword = String(req.body?.confirmPassword || '');
+  const users = getUsersRaw();
+  const userIndex = users.findIndex((user) => normalizeEmail(user.email) === email);
+
+  if (userIndex === -1) {
+    return res.status(404).json({ error: 'Administrador nao encontrado para redefinicao de senha' });
+  }
+
+  if (password !== confirmPassword) {
+    return res.status(400).json({ error: 'A confirmacao de senha nao confere' });
+  }
+
+  if (!isStrongPassword(password)) {
+    return res.status(400).json({ error: getPasswordRequirementMessage() });
+  }
+
+  users[userIndex] = {
+    ...users[userIndex],
+    password,
+    status: 'active',
+    mustResetPassword: false,
+    updatedAt: new Date().toISOString(),
+  };
+
+  saveUsers(users);
+
+  return res.json({
+    success: true,
+    user: getUserResponse(users[userIndex]),
+  });
+});
+
+app.put('/api/admin-users/:id/request-reset', (req, res) => {
+  const userId = Number(req.params.id);
+  const users = getUsersRaw();
+  const userIndex = users.findIndex((user) => Number(user.id) === userId);
+
+  if (userIndex === -1) {
+    return res.status(404).json({ error: 'Administrador nao encontrado' });
+  }
+
+  if (isMasterUser(users[userIndex])) {
+    return res.status(400).json({ error: 'A senha do administrador master nao pode ser redefinida por este fluxo' });
+  }
+
+  users[userIndex] = {
+    ...users[userIndex],
+    password: '',
+    mustResetPassword: true,
+    updatedAt: new Date().toISOString(),
+  };
+
+  saveUsers(users);
+
+  return res.json({
+    success: true,
+    user: getUserResponse(users[userIndex]),
   });
 });
 
@@ -604,6 +1091,12 @@ app.post('/api/items', (req, res) => {
 
     if (!item) {
       return res.status(404).json({ error: 'Item base nao encontrado' });
+    }
+
+    try {
+      assertAdminLocationAccess(item, payload);
+    } catch (error) {
+      return res.status(403).json({ error: error.message || 'Administrador sem acesso a esta localizacao' });
     }
 
     const unidadesParaAdicionar =
@@ -643,6 +1136,12 @@ app.post('/api/items', (req, res) => {
 
   if (!validateRequiredFields(res, payload, ['titulo', 'marca', 'modelo', 'tipo'])) {
     return;
+  }
+
+  try {
+    assertAdminLocationAccess({ titulo: payload.titulo, localizacao: payload.localizacao }, req.body);
+  } catch (error) {
+    return res.status(403).json({ error: error.message || 'Administrador sem acesso a esta localizacao' });
   }
 
   const newId = nextNumericId(items);
@@ -699,6 +1198,12 @@ app.put('/api/items/:id', (req, res) => {
 
   const payload = req.body || {};
 
+  try {
+    assertAdminLocationAccess(item, payload);
+  } catch (error) {
+    return res.status(403).json({ error: error.message || 'Administrador sem acesso a esta localizacao' });
+  }
+
   if (Array.isArray(payload.unidades)) {
     const normalizedUnits = payload.unidades.map((unit, index) => normalizeUnit(unit, itemId, index));
     const duplicated = normalizedUnits.find(
@@ -729,6 +1234,12 @@ app.put('/api/items/:id', (req, res) => {
   item.modelo = String(payload.modelo ?? item.modelo).trim();
   item.tipo = String(payload.tipo ?? item.tipo).trim();
   item.localizacao = String(payload.localizacao ?? item.localizacao).trim();
+
+  try {
+    assertAdminLocationAccess(item, payload);
+  } catch (error) {
+    return res.status(403).json({ error: error.message || 'Administrador sem acesso a esta localizacao' });
+  }
 
   saveItems(items);
   const updatedItem = getComputedItems().find((entry) => Number(entry.id) === itemId);
@@ -779,6 +1290,12 @@ app.post('/api/metadata', (req, res) => {
     return res.status(400).json({ error: 'Informe o valor a cadastrar' });
   }
 
+  try {
+    assertMasterForLocationMetadata(field, req.body);
+  } catch (error) {
+    return res.status(403).json({ error: error.message || 'Operacao nao permitida' });
+  }
+
   const store = readMetadataStore();
   store[field] = [...new Set([...(store[field] || []), normalizedValue])];
   writeMetadataStore(store);
@@ -800,16 +1317,26 @@ app.put('/api/metadata', (req, res) => {
     return res.status(400).json({ error: 'Informe os valores antigo e novo' });
   }
 
+  try {
+    assertMasterForLocationMetadata(field, req.body);
+  } catch (error) {
+    return res.status(403).json({ error: error.message || 'Operacao nao permitida' });
+  }
+
   const items = getItemsRaw();
   const store = readMetadataStore();
   let updatedCount = 0;
 
   items.forEach((item) => {
-    if (String(item[field] || '').trim() === oldValueNormalized) {
+    if (String(item[field] || '').trim() === oldValueNormalized && itemIsWithinAdminScope(item, req.body)) {
       item[field] = newValueNormalized;
       updatedCount += 1;
     }
   });
+
+  if (updatedCount === 0) {
+    return res.status(403).json({ error: 'Nenhum registro elegivel para edicao dentro das areas autorizadas' });
+  }
 
   saveItems(items);
   store[field] = (store[field] || []).map((value) =>
@@ -835,19 +1362,32 @@ app.delete('/api/metadata', (req, res) => {
     return res.status(400).json({ error: 'Informe o valor a remover' });
   }
 
+  try {
+    assertMasterForLocationMetadata(field, req.body);
+  } catch (error) {
+    return res.status(403).json({ error: error.message || 'Operacao nao permitida' });
+  }
+
   const items = getItemsRaw();
   const store = readMetadataStore();
   let updatedCount = 0;
 
   items.forEach((item) => {
-    if (String(item[field] || '').trim() === valueNormalized) {
+    if (String(item[field] || '').trim() === valueNormalized && itemIsWithinAdminScope(item, req.body)) {
       item[field] = '';
       updatedCount += 1;
     }
   });
 
+  if (updatedCount === 0) {
+    return res.status(403).json({ error: 'Nenhum registro elegivel para exclusao dentro das areas autorizadas' });
+  }
+
   saveItems(items);
-  store[field] = (store[field] || []).filter((value) => String(value || '').trim() !== valueNormalized);
+  const valueStillInUse = items.some((item) => String(item[field] || '').trim() === valueNormalized);
+  store[field] = valueStillInUse
+    ? store[field] || []
+    : (store[field] || []).filter((value) => String(value || '').trim() !== valueNormalized);
   writeMetadataStore(store);
 
   return res.json({ success: true, updatedCount, values: getMetadataValues(field, items) });
@@ -916,6 +1456,8 @@ app.post('/api/loans', (req, res) => {
         throw new Error('Item nao encontrado');
       }
 
+      assertAdminLocationAccess(item, req.body);
+
       const remainingUnits = availabilityContext.remainingByItemId.get(Number(line.itemId)) || [];
       const selectedUnits = takeUnitsFromAvailability(item, remainingUnits, line, true);
 
@@ -925,6 +1467,7 @@ app.post('/api/loans', (req, res) => {
           loanGroupId,
           itemId: Number(item.id),
           itemNome: line.itemNome || item.titulo,
+          localizacao: item.localizacao || '',
           itemUnitId: unit.id,
           itemPatrimonio: unit.patrimonioExibicao,
           itemPatrimonioReal: unit.patrimonio,
@@ -995,11 +1538,16 @@ app.get('/api/solicitacoes/email/:email', (req, res) => {
 
 app.post('/api/solicitacoes', (req, res) => {
   const solicitacoes = getSolicitacoesRaw();
-  const lines = normalizeLineItems(req.body.items, req.body.itemId ? req.body : null).map((line) => ({
-    ...line,
-    itemPatrimonios: [],
-    itemUnitIds: [],
-  }));
+  const availabilityContext = buildAvailabilityContext();
+  const lines = normalizeLineItems(req.body.items, req.body.itemId ? req.body : null).map((line) => {
+    const item = availabilityContext.itemsById.get(Number(line.itemId));
+    return {
+      ...line,
+      itemLocalizacao: item?.localizacao || line.itemLocalizacao || '',
+      itemPatrimonios: [],
+      itemUnitIds: [],
+    };
+  });
 
   if (lines.length === 0) {
     return res.status(400).json({ error: 'Nenhum item foi informado para a solicitacao' });
@@ -1010,7 +1558,7 @@ app.post('/api/solicitacoes', (req, res) => {
   }
 
   try {
-    assertRequestedQuantities(lines, buildAvailabilityContext());
+    assertRequestedQuantities(lines, availabilityContext);
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Erro ao validar solicitacao' });
   }
@@ -1070,6 +1618,8 @@ app.put('/api/solicitacoes/:id/aprovar', (req, res) => {
         throw new Error('Item da solicitacao nao encontrado');
       }
 
+      assertAdminLocationAccess(item, req.body);
+
       const remainingUnits = availabilityContext.remainingByItemId.get(Number(line.itemId)) || [];
       const allocation = allocationByLineId.get(String(line.id)) || { unitIds: [] };
       const selectedUnits = takeUnitsFromAvailability(
@@ -1089,6 +1639,7 @@ app.put('/api/solicitacoes/:id/aprovar', (req, res) => {
           solicitacaoId: solicitacao.id,
           itemId: Number(item.id),
           itemNome: line.itemNome || item.titulo,
+          localizacao: item.localizacao || line.itemLocalizacao || '',
           itemUnitId: unit.id,
           itemPatrimonio: unit.patrimonioExibicao,
           itemPatrimonioReal: unit.patrimonio,
