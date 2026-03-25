@@ -7,6 +7,18 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div class="background-slider" aria-hidden="true">
+    <div class="background-slider-track">
+      <div class="background-slide slide-gen"></div>
+      <div class="background-slide slide-lab"></div>
+      <div class="background-slide slide-osci"></div>
+      <div class="background-slide slide-gen"></div>
+      <div class="background-slide slide-lab"></div>
+      <div class="background-slide slide-osci"></div>
+    </div>
+    <div class="background-overlay"></div>
+  </div>
+
   <main class="container">
     <div class="card">
       <h1>Sistema de Empréstimo</h1>
@@ -15,18 +27,17 @@
       <div class="buttons">
         <button class="btn" id="openModal">Login do Administrador</button>
         <button class="btn" id="openLoanModal">Solicitar Empréstimo</button>
+        <button class="btn btn-secondary-main" id="openTrackModal">Acompanhar Solicitação</button>
       </div>
     </div>
   </main>
 
-  <!-- Modal de Login do Administrador -->
   <div class="modal-overlay" id="modalOverlay">
     <div class="modal">
       <div class="modal-header">
         <h2>Acesso Administrador</h2>
         <button class="close-btn" id="closeModal">&times;</button>
       </div>
-
       <div class="modal-body">
         <form id="adminLoginForm">
           <label for="usuario">Usuário</label>
@@ -36,14 +47,12 @@
           <input type="password" id="senha" placeholder="Digite sua senha">
 
           <div id="adminFeedback" class="feedback-message" style="display: none;"></div>
-          
           <button type="submit" class="modal-login-btn">Entrar</button>
         </form>
       </div>
     </div>
   </div>
 
-  <!-- Modal de Solicitar Empréstimo -->
   <div class="modal-overlay" id="loanModalOverlay">
     <div class="modal modal-loan">
       <div class="modal-header">
@@ -59,20 +68,17 @@
           </div>
 
           <div class="form-group">
-            <label for="requesterEmail">E-mail institucional</label>
-            <input type="email" id="requesterEmail" placeholder="maria.souza@unesp.br">
+            <label for="requesterEmail">E-mail institucional *</label>
+            <input type="email" id="requesterEmail" placeholder="maria.souza@unesp.br" required>
           </div>
 
-          <div class="form-group">
-            <label for="itemSearch">Nome do Item *</label>
-            <input type="text" id="itemSearch" placeholder="Digite o nome do item..." autocomplete="off">
-            <div id="itemSuggestions" class="suggestions-list"></div>
+          <div class="modal-section-header">
+            <h3>Itens do empréstimo</h3>
           </div>
 
-          <div class="form-group">
-            <label for="itemPatrimonio">Nº de Patrimônio *</label>
-            <input type="text" id="itemPatrimonio" placeholder="Digite o número de patrimônio..." autocomplete="off">
-            <div id="patrimonioSuggestions" class="suggestions-list"></div>
+          <div id="requestItemsContainer" class="item-lines"></div>
+          <div class="item-add-action">
+            <button type="button" class="ghost-btn" id="addRequestItemBtn">+ Adicionar item</button>
           </div>
 
           <div class="form-row">
@@ -80,26 +86,27 @@
               <label for="loanDate">Data prevista para retirada *</label>
               <input type="date" id="loanDate" required>
             </div>
-
             <div class="form-group">
               <label for="returnDate">Data prevista para devolução *</label>
               <input type="date" id="returnDate" required>
             </div>
           </div>
 
-          <div id="selectedItemInfo" class="selected-item-info" style="display: none;">
-            <strong>Item selecionado:</strong>
-            <span id="selectedItemName"></span>
-            <br>
-            <strong>Patrimônio:</strong>
-            <span id="selectedItemPatrimonio"></span>
-          </div>
-
           <div id="loanFeedback" class="feedback-message" style="display: none;"></div>
-          
-          <button type="submit" class="modal-login-btn" id="submitLoanBtn" disabled>Enviar solicitação</button>
+          <button type="submit" class="modal-login-btn" id="submitLoanBtn">Enviar solicitação</button>
         </form>
       </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="siteModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="siteModalTitle">Informação</h2>
+        <button class="close-btn" id="siteModalClose">&times;</button>
+      </div>
+      <div class="modal-body" id="siteModalBody"></div>
+      <div class="modal-actions" id="siteModalFooter"></div>
     </div>
   </div>
 

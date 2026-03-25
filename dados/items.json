@@ -1,35 +1,131 @@
 [
   {
     "id": 1,
-    "marca": "Tektronix",
-    "modelo": "TDS2024C",
-    "patrimonio": "UNESP-2024-001",
-    "serial": "TEK-2024-001",
+    "titulo": "Prototipadora LPKF S104",
+    "marca": "LPKF",
+    "modelo": "S104",
     "tipo": "Equipamento",
-    "quantidade": 3,
-    "descricao": "Osciloscópio digital de 200MHz",
-    "localizacao": "Lab 101"
+    "localizacao": "Lab Comunicações",
+    "quantidade": 1,
+    "unidades": [
+      {
+        "id": "1-1",
+        "patrimonio": "000446",
+        "serial": "",
+        "legadoGerado": false,
+        "semPatrimonio": false
+      }
+    ],
+    "patrimonio": "000446",
+    "serial": ""
   },
   {
     "id": 2,
-    "marca": "Dell",
-    "modelo": "Latitude 5420",
-    "patrimonio": "UNESP-2024-002",
-    "serial": "DL-5420-001",
-    "tipo": "Informática",
-    "quantidade": 5,
-    "descricao": "Notebook Intel i5, 8GB RAM",
-    "localizacao": "Lab 102"
+    "titulo": "Alcool Isopropilico",
+    "marca": "Implastec",
+    "modelo": "250ml",
+    "tipo": "Consumível",
+    "localizacao": "Lab Comunicações",
+    "quantidade": 1,
+    "unidades": [
+      {
+        "id": "2-1",
+        "patrimonio": "SEM-PATRIMONIO-2-1",
+        "serial": "",
+        "legadoGerado": false,
+        "semPatrimonio": true
+      }
+    ],
+    "patrimonio": "SEM-PATRIMONIO-2-1",
+    "serial": ""
   },
   {
     "id": 3,
-    "marca": "Arduino",
-    "modelo": "Uno R3",
-    "patrimonio": "UNESP-2024-003",
-    "serial": "ARD-UNO-001",
+    "titulo": "Garrafa de água",
+    "marca": "Crystal",
+    "modelo": "500ml",
+    "tipo": "Consumível",
+    "localizacao": "Lab Comunicações",
+    "quantidade": 1,
+    "unidades": [
+      {
+        "id": "3-1",
+        "patrimonio": "SEM-PATRIMONIO-3-1",
+        "serial": "",
+        "legadoGerado": false,
+        "semPatrimonio": true
+      }
+    ],
+    "patrimonio": "SEM-PATRIMONIO-3-1",
+    "serial": ""
+  },
+  {
+    "id": 4,
+    "titulo": "Multimetro Minipa ET245B",
+    "marca": "Minipa",
+    "modelo": "ET245B",
     "tipo": "Equipamento",
-    "quantidade": 10,
-    "descricao": "Kit completo com sensores",
-    "localizacao": "Lab 103"
+    "localizacao": "Lab Eletrônica 01",
+    "quantidade": 8,
+    "unidades": [
+      {
+        "id": "4-1",
+        "patrimonio": "12301",
+        "serial": "",
+        "legadoGerado": false,
+        "semPatrimonio": false
+      },
+      {
+        "id": "4-2",
+        "patrimonio": "12302",
+        "serial": "",
+        "legadoGerado": false,
+        "semPatrimonio": false
+      },
+      {
+        "id": "4-3",
+        "patrimonio": "12303",
+        "serial": "",
+        "legadoGerado": false,
+        "semPatrimonio": false
+      },
+      {
+        "id": "4-4",
+        "patrimonio": "12304",
+        "serial": "",
+        "legadoGerado": false,
+        "semPatrimonio": false
+      },
+      {
+        "id": "4-5",
+        "patrimonio": "12305",
+        "serial": "",
+        "legadoGerado": false,
+        "semPatrimonio": false
+      },
+      {
+        "id": "4-6",
+        "patrimonio": "12306",
+        "serial": "",
+        "legadoGerado": false,
+        "semPatrimonio": false
+      },
+      {
+        "id": "4-7",
+        "patrimonio": "12307",
+        "serial": "",
+        "legadoGerado": false,
+        "semPatrimonio": false
+      },
+      {
+        "id": "4-8",
+        "patrimonio": "12308",
+        "serial": "",
+        "legadoGerado": false,
+        "semPatrimonio": false
+      }
+    ],
+    "patrimonio": "12301",
+    "serial": ""
   }
 ]
